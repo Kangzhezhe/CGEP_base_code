@@ -189,8 +189,9 @@ for epoch in range(args.num_epoch):
                     sent[k]['attention_mask'] = sent[k]['attention_mask'].to(device)
             length = len(batch_indices)
             # fed data into network
-            # prediction = net(batch_arg, mask_arg, mask_indices, length)
-            prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
+            prediction = net(batch_arg, mask_arg, mask_indices, length)
+            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
+            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
             # answer_space：[23702,50265]
             label = torch.LongTensor(labels).to(device)
             # loss
@@ -226,7 +227,7 @@ for epoch in range(args.num_epoch):
         progress.close()
 
 
-        torch.save(net.state_dict(), args.model)
+        # torch.save(net.state_dict(), args.model)
 
     ############################################################################
     ##################################  dev  ###################################
@@ -253,9 +254,9 @@ for epoch in range(args.num_epoch):
                     sent[k]['input_ids'] = sent[k]['input_ids'].to(device)
                     sent[k]['attention_mask'] = sent[k]['attention_mask'].to(device)
             length = len(batch_indices)
+            prediction = net(batch_arg, mask_arg, mask_indices, length)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
-            prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
-            # prediction = net(batch_arg, mask_arg, mask_indices, length)
+            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
 
             hit1, hit3, hit10, hit50 = calculate(prediction, candiSet, labels, length)
             Hit1_d += hit1
@@ -302,18 +303,20 @@ for epoch in range(args.num_epoch):
             progress.update(1)
 
             # get a batch of wordvecs
-            batch_arg, mask_arg, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos = get_batch(test_data, args, batch_indices, tokenizer)
+            batch_arg, mask_arg, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(test_data, args, batch_indices, tokenizer)
             batch_arg = batch_arg.to(device)
             mask_arg = mask_arg.to(device)
             mask_indices = mask_indices.to(device)
+            batch_Type_arg, mask_Type_arg = batch_Type_arg.to(device), mask_Type_arg.to(device)
             for sent in sentences:
                 for k in sent.keys():
                     sent[k]['input_ids'] = sent[k]['input_ids'].to(device)
                     sent[k]['attention_mask'] = sent[k]['attention_mask'].to(device)
             length = len(batch_indices)
             # fed data into network
-            # prediction = net(batch_arg, mask_arg, mask_indices, length)
-            prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
+            prediction = net(batch_arg, mask_arg, mask_indices, length)
+            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
+            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
 
             predictions.append(prediction.cpu().detach().numpy())
             candiSets.append(candiSet)
