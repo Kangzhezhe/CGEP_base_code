@@ -4,4 +4,4 @@ output/
 model/*
 ckpts/*
 .idea
-__pycahce__
+__pycache__
