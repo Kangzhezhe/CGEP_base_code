@@ -1,0 +1,7 @@
+train.npy
+out/
+output/
+model/*
+ckpts/*
+.idea
+__pycahce__
