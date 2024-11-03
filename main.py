@@ -107,9 +107,9 @@ test_data = replace_mult_event(test_data,reverse_event_dict)
 
 
 # ---------- network ----------
-# net = MLP(args).to(device)
+net = MLP(args).to(device)
 # net = SeDGPL(args).to(device)
-net = SeDGPL1(args).to(device)
+# net = SeDGPL1(args).to(device)
 net.handler(to_add, tokenizer)
 
 if args.ckpt.strip() != '':
