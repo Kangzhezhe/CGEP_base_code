@@ -116,8 +116,12 @@ class MLP_T5(nn.Module):
 
     # batch_arg:句子分词id，arg_mask:句子分词掩码，mask_indices:[MASK]在分词id中的位置，event_group:事件id集合
     def forward(self, batch_arg, arg_mask, mask_indices, batch_size):
-        word_emb = self.t5_model.shared(batch_arg).to(device)
-        temp_emb = self.t5_model(attention_mask=arg_mask, inputs_embeds=word_emb).last_hidden_state.to(device)
+        # 创建 decoder_input_ids，使用 <pad> 作为起始标记
+        # decoder_input_ids = self.t5_model._shift_right(batch_arg)
+        
+        # 使用 input_ids 和 decoder_input_ids
+        outputs = self.t5_model(input_ids=batch_arg,  decoder_input_ids=batch_arg, attention_mask=arg_mask)
+        temp_emb = outputs.logits.to(device)
 
         prediction = torch.tensor([]).to(device)
         for i in range(batch_size):
@@ -127,6 +131,7 @@ class MLP_T5(nn.Module):
             else:
                 prediction = torch.cat((prediction, e_emb), dim=0)
         return prediction
+
 
     def extract_event(self, embed, mask_idx):
         mask_embed = embed[mask_idx]

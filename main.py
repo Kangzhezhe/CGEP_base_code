@@ -16,7 +16,7 @@ import logging
 import tqdm
 from datetime import datetime
 from load_data import load_data
-from transformers import RobertaTokenizer, AdamW,AutoTokenizer
+from transformers import RobertaTokenizer, AdamW,AutoTokenizer,T5TokenizerFast
 from parameter import parse_args
 from tools import calculate, get_batch, correct_data,collect_mult_event,replace_mult_event
 import random
@@ -81,12 +81,32 @@ printlog('transformer model: {}'.format(args.model_name))
 # tokenizer = RobertaTokenizer.from_pretrained(args.model_name)
 # tokenizer = RobertaTokenizer("model/vocab.json", "model/merges.txt")
 
+
 if args.model_name == 'roberta': 
     tokenizer = AutoTokenizer.from_pretrained('FacebookAI/roberta-base')
 elif args.model_name == 'albert':
     tokenizer = AutoTokenizer.from_pretrained('albert/albert-base-v2')
 elif args.model_name == 't5':
-    tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-base")
+    class CustomT5Tokenizer:
+        def __init__(self, pretrained_model_name_or_path):
+            self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
+            self.tokenizer.mask_token = '<extra_id_0>'
+        def encode(self, text, **kwargs):
+            # 在这里添加你自定义的编码逻辑
+            encoded_input = self.tokenizer.encode(text, **kwargs)
+            return [0,*encoded_input]
+        def __getattr__(self, name):
+            return getattr(self.tokenizer, name)
+        def __call__(self, *args, **kwargs):
+            output = self.tokenizer(*args, **kwargs)
+            output['input_ids'] = [0,*output['input_ids']]
+            output['attention_mask'] = [1,*output['attention_mask']]
+            return output
+        def __len__(self):
+            return len(self.tokenizer)
+    tokenizer = CustomT5Tokenizer("google-t5/t5-base")
+    
+
 
 # -------------------------------- 加载数据 --------------------------------
 printlog('Loading data')
@@ -230,7 +250,7 @@ for epoch in range(args.num_epoch):
             all_Hit50 += hit50
             if ii % (100 // args.batch_size) == 0:
                 printlog('loss={:.4f} hit1={:.4f}, hit3={:.4f}, hit10={:.4f}, hit50={:.4f}'.format(
-                    loss_epoch / (30 // args.batch_size),
+                    loss_epoch / (100 // args.batch_size),
                     sum(Hit1) / len(Hit1),
                     sum(Hit3) / len(Hit3),
                     sum(Hit10) / len(Hit10),
@@ -255,6 +275,7 @@ for epoch in range(args.num_epoch):
         progress = tqdm.tqdm(total=len(dev_data) // args.batch_size + 1, ncols=75,
                                 desc='Eval {}'.format(epoch))
 
+        dev_loss = 0.0
         net.eval()
         for batch_indices in all_indices:
             progress.update(1)
@@ -271,6 +292,8 @@ for epoch in range(args.num_epoch):
                     sent[k]['attention_mask'] = sent[k]['attention_mask'].to(device)
             length = len(batch_indices)
             prediction = net(batch_arg, mask_arg, mask_indices, length)
+            loss = cross_entropy(prediction, labels)
+            dev_loss += loss.item() * len(batch_indices)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
 
@@ -285,7 +308,7 @@ for epoch in range(args.num_epoch):
     if args.eval is True and args.train is False and args.test is False:
         printlog("DEV:")
         printlog('loss={:.4f} hit1={:.4f}, hit3={:.4f}, hit10={:.4f}, hit50={:.4f}'.format(
-            loss_epoch / (30 // args.batch_size),
+            loss_epoch / (100 // args.batch_size),
             sum(Hit1_d) / len(Hit1_d),
             sum(Hit3_d) / len(Hit3_d),
             sum(Hit10_d) / len(Hit10_d),
@@ -373,7 +396,7 @@ for epoch in range(args.num_epoch):
         printlog('EPOCH : {}'.format(epoch))
         printlog("TRAIN:")
         printlog('loss={:.4f} hit1={:.4f}, hit3={:.4f}, hit10={:.4f}, hit50={:.4f}'.format(
-            loss_epoch / (30 // args.batch_size),
+            loss_epoch / (len(train_data) // args.batch_size),
             sum(all_Hit1) / len(all_Hit1),
             sum(all_Hit3) / len(all_Hit3),
             sum(all_Hit10) / len(all_Hit10),
@@ -383,7 +406,7 @@ for epoch in range(args.num_epoch):
     if args.eval:
         printlog("DEV:")
         printlog('loss={:.4f} hit1={:.4f}, hit3={:.4f}, hit10={:.4f}, hit50={:.4f}'.format(
-            loss_epoch / (30 // args.batch_size),
+            dev_loss / (len(dev_data) // args.batch_size),
             sum(Hit1_d) / len(Hit1_d),
             sum(Hit3_d) / len(Hit3_d),
             sum(Hit10_d) / len(Hit10_d),
@@ -392,7 +415,7 @@ for epoch in range(args.num_epoch):
     ######### Test Results Print #########
     # printlog("TEST:")
     # printlog('loss={:.4f} hit1={:.4f}, hit3={:.4f}, hit10={:.4f}, hit50={:.4f}'.format(
-    #     loss_epoch / (30 // args.batch_size),
+    #     loss_epoch / (100 // args.batch_size),
     #     sum(Hit1_t) / len(Hit1_t),
     #     sum(Hit3_t) / len(Hit3_t),
     #     sum(Hit10_t) / len(Hit10_t),
