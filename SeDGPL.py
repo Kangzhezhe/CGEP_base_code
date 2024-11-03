@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from transformers import RobertaForMaskedLM
 import numpy as np
+import torch.nn.functional as F
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # device = torch.device('cpu')
@@ -37,13 +38,11 @@ class SeDGPL(nn.Module):
         self.vocab_size = args.vocab_size
 
     # batch_arg:句子分词id，arg_mask:句子分词掩码，mask_indices:[MASK]在分词id中的位置，event_group:事件id集合
-    def forward(self, batch_arg, arg_mask, mask_indices, batch_size,sentences,event_tokenizer_pos, event_key_pos):
+    def forward(self,mode, batch_arg, arg_mask, mask_indices, batch_size,sentences,event_tokenizer_pos, event_key_pos,candiSet, candiLabels):
         for i in range(batch_size):
             for k in sentences[i]:
                 sent_emb = self.robert_text.roberta(sentences[i][k]['input_ids'], sentences[i][k]['attention_mask'])[0].to(device)
                 sentences[i][k]['emb'] = sent_emb[0][sentences[i][k]['position']]
-        
-
         word_emb = self.roberta_model.roberta.embeddings.word_embeddings(batch_arg).to(device)
 
         for i in range(batch_size):
@@ -70,8 +69,24 @@ class SeDGPL(nn.Module):
             else:
                 anchor_maks = torch.cat((anchor_maks, e_emb),dim=0)
 
-        prediction = self.roberta_model.lm_head(anchor_maks)
-        return prediction
+        if mode == 'Prompt Learning':
+            prediction = self.roberta_model.lm_head(anchor_maks)
+            return prediction
+        if mode == 'SimPrompt Learning':
+            prediction = self.roberta_model.lm_head(anchor_maks)
+            candi_e_emb = self.roberta_model.roberta.embeddings.word_embeddings(torch.tensor(candiSet[0]).to(device)).to(device)
+            pos_emb = candi_e_emb[candiLabels, :]
+            neg_emb = torch.cat((candi_e_emb[:candiLabels[0]], candi_e_emb[candiLabels[0] + 1:]))
+
+            pos_cos = F.cosine_similarity(anchor_maks, pos_emb, dim=1)
+            neg_cos = F.cosine_similarity(anchor_maks, neg_emb, dim=1)
+
+            pos_sim = torch.sum(torch.exp(pos_cos), dim=0)
+            neg_sim = torch.sum(torch.exp(neg_cos), dim=0)
+
+            SP_loss = - torch.log(pos_sim / (pos_sim + neg_sim))
+
+            return prediction, SP_loss
         
 
     def extract_event(self, embed, mask_idx):

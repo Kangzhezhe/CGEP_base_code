@@ -46,7 +46,12 @@ def getTemplate(args, data,tokenizer):
     template = template + data['node'][maskRel[0]][5] + ' ' + maskRel[1] + f' {tokenizer.mask_token} .'
     templateType=templateType+data['node'][maskRel[0]][4] + ' '+maskRel[1]+ f' {tokenizer.mask_token} .'
     assert len(template.split(' ')) == len(templateType.split(' '))
-    return template, templateType, sorted_relation_only + [maskRel]
+
+    template_pre = ""
+    for k in range(len(data['node'])):
+        template_pre += data['node'][k][6] + ' ,'
+    out_template = template_pre + template
+    return out_template, templateType, sorted_relation_only + [maskRel]
 
 def getSentence(args, tokenizer, data, relation):
     sentence = {}
@@ -94,8 +99,8 @@ def tokenizerHandler(args, template, tokenizer):
         template,
         add_special_tokens=True,
         padding='max_length',
-        max_length=args.len_arg,
-        truncation=True,
+        # max_length=args.len_arg,
+        truncation=False,
         pad_to_max_length=True,
         return_attention_mask=True,
         return_tensors='pt'
@@ -127,9 +132,9 @@ def get_batch(data, args, indices, tokenizer,is_test=False):
             label = tokenizer.encode(data[idx]['candiSet'][data[idx]['label']])[1]
 
         # template分词后所有事件的位置
-        ePosition, ePositionKey = getposHandler(data[idx], arg_1_idx, relation, sentence, tokenizer)
-        event_tokenizer_pos.append(ePosition)
-        event_key_pos.append(ePositionKey)
+        # ePosition, ePositionKey = getposHandler(data[idx], arg_1_idx, relation, sentence, tokenizer)
+        # event_tokenizer_pos.append(ePosition)
+        # event_key_pos.append(ePositionKey)
         
         labels.append(label)
         candiSet.append(candi)

@@ -105,7 +105,8 @@ elif args.model_name == 't5':
         def __len__(self):
             return len(self.tokenizer)
     tokenizer = CustomT5Tokenizer("google-t5/t5-base")
-    
+else:
+    tokenizer = RobertaTokenizer.from_pretrained('FacebookAI/roberta-base')
 
 
 # -------------------------------- 加载数据 --------------------------------
@@ -144,8 +145,10 @@ elif args.model_name == 'albert':
     net = MLP_albert(args).to(device)
 elif args.model_name == 't5':
     net = MLP_T5(args).to(device)
-# net = SeDGPL(args).to(device)
-# net = SeDGPL1(args).to(device)
+elif args.model_name == 'sedgpl':
+    net = SeDGPL(args).to(device)
+elif args.model_name == 'sedgpl1':
+    net = SeDGPL1(args).to(device)
 net.handler(to_add, tokenizer)
 
 if args.ckpt.strip() != '':
@@ -212,6 +215,7 @@ for epoch in range(args.num_epoch):
         total_step = len(train_data) // args.batch_size + 1
         step = 0
         for ii, batch_indices in enumerate(all_indices, 1):
+            mode = 'SimPrompt Learning'
             progress.update(1)
             # get a batch of wordvecs
             batch_arg, mask_arg, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(train_data, args, batch_indices, tokenizer)
@@ -219,19 +223,27 @@ for epoch in range(args.num_epoch):
             mask_arg = mask_arg.to(device)
             mask_indices = mask_indices.to(device)
             batch_Type_arg, mask_Type_arg = batch_Type_arg.to(device), mask_Type_arg.to(device)
+            candiLabels = [] +labels
+            for tt in range(len(labels)):
+                candiLabels[tt] = candiSet[tt].index(labels[tt])
             for sent in sentences:
                 for k in sent.keys():
                     sent[k]['input_ids'] = sent[k]['input_ids'].to(device)
                     sent[k]['attention_mask'] = sent[k]['attention_mask'].to(device)
             length = len(batch_indices)
             # fed data into network
-            prediction = net(batch_arg, mask_arg, mask_indices, length)
-            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
+            if args.model_name == 't5': 
+                prediction = net(batch_arg, mask_arg, mask_indices, length)
+            if args.model_name == 'sedgpl':
+                prediction, SP_loss = net(mode,batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,candiSet, candiLabels)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
-            # answer_space：[23702,50265]
             label = torch.LongTensor(labels).to(device)
-            # loss
-            loss = cross_entropy(prediction,label)
+
+            if args.model_name == 't5':
+                loss = cross_entropy(prediction,label)
+            elif args.model_name == 'sedgpl':
+                loss = cross_entropy(prediction,label) + args.Sim_ratio * SP_loss
+
             # optimize
             optimizer.zero_grad()
             loss.backward()
@@ -263,19 +275,19 @@ for epoch in range(args.num_epoch):
         progress.close()
 
 
-        torch.save(net.state_dict(), args.model)
+        # torch.save(net.state_dict(), args.model)
 
     ############################################################################
     ##################################  dev  ###################################
     ############################################################################
     if args.eval:
+        mode = 'Prompt Learning'
         all_indices = torch.randperm(dev_size).split(args.batch_size)
         Hit1_d, Hit3_d, Hit10_d, Hit50_d = [], [], [], []
 
         progress = tqdm.tqdm(total=len(dev_data) // args.batch_size + 1, ncols=75,
                                 desc='Eval {}'.format(epoch))
 
-        dev_loss = 0.0
         net.eval()
         for batch_indices in all_indices:
             progress.update(1)
@@ -285,18 +297,22 @@ for epoch in range(args.num_epoch):
             batch_arg = batch_arg.to(device)
             mask_arg = mask_arg.to(device)
             mask_indices = mask_indices.to(device)
+            candiLabels = [] + labels
+            for tt in range(len(labels)):
+                candiLabels[tt] = candiSet[tt].index(labels[tt])
             batch_Type_arg, mask_Type_arg = batch_Type_arg.to(device), mask_Type_arg.to(device)
             for sent in sentences:
                 for k in sent.keys():
                     sent[k]['input_ids'] = sent[k]['input_ids'].to(device)
                     sent[k]['attention_mask'] = sent[k]['attention_mask'].to(device)
             length = len(batch_indices)
-            prediction = net(batch_arg, mask_arg, mask_indices, length)
-            loss = cross_entropy(prediction, labels)
-            dev_loss += loss.item() * len(batch_indices)
-            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
+            if args.model_name == 't5': 
+                prediction = net(batch_arg, mask_arg, mask_indices, length)
+            if args.model_name == 'sedgpl':
+                prediction = net(mode,batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,candiSet, candiLabels)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
 
+           
             hit1, hit3, hit10, hit50 = calculate(prediction, candiSet, labels, length)
             Hit1_d += hit1
             Hit3_d += hit3
@@ -353,8 +369,8 @@ for epoch in range(args.num_epoch):
                     sent[k]['attention_mask'] = sent[k]['attention_mask'].to(device)
             length = len(batch_indices)
             # fed data into network
-            prediction = net(batch_arg, mask_arg, mask_indices, length)
-            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
+            # prediction = net(batch_arg, mask_arg, mask_indices, length)
+            prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
 
             predictions.append(prediction.cpu().detach().numpy())
@@ -406,7 +422,7 @@ for epoch in range(args.num_epoch):
     if args.eval:
         printlog("DEV:")
         printlog('loss={:.4f} hit1={:.4f}, hit3={:.4f}, hit10={:.4f}, hit50={:.4f}'.format(
-            dev_loss / (len(dev_data) // args.batch_size),
+            loss_epoch / (len(dev_data) // args.batch_size),
             sum(Hit1_d) / len(Hit1_d),
             sum(Hit3_d) / len(Hit3_d),
             sum(Hit10_d) / len(Hit10_d),

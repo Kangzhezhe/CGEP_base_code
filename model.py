@@ -118,7 +118,8 @@ class MLP_T5(nn.Module):
     def forward(self, batch_arg, arg_mask, mask_indices, batch_size):
         # 创建 decoder_input_ids，使用 <pad> 作为起始标记
         # decoder_input_ids = self.t5_model._shift_right(batch_arg)
-        
+        # batch_arg = torch.unsqueeze(batch_arg[0,:mask_indices+1],0)
+        # arg_mask = torch.unsqueeze(arg_mask[0,:mask_indices+1],0)
         # 使用 input_ids 和 decoder_input_ids
         outputs = self.t5_model(input_ids=batch_arg,  decoder_input_ids=batch_arg, attention_mask=arg_mask)
         temp_emb = outputs.logits.to(device)
