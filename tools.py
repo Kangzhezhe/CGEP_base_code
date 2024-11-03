@@ -18,7 +18,7 @@ from util import getDistance
 #     maskRel = data['edge'][-1]
 #     return template + data['node'][maskRel[0]][5] + ' ' + maskRel[1] + ' <mask> .', relation + [maskRel]
 
-def getTemplate(args, data):
+def getTemplate(args, data,tokenizer):
     edge = data['edge'][:-1] if len(data['edge'])<=(args.len_arg)//10 else data['edge'][0:(args.len_arg)//10]
     # random.shuffle(edge)
     causeRel = edge[0:len(edge)]
@@ -43,10 +43,15 @@ def getTemplate(args, data):
         template = template + rl + ' , '
         templateType = templateType + rlType + ' , '
     maskRel = data['edge'][-1]
-    template = template + data['node'][maskRel[0]][5] + ' ' + maskRel[1] + ' <mask> .'
-    templateType=templateType+data['node'][maskRel[0]][4] + ' '+maskRel[1]+' <mask> .'
+    template = template + data['node'][maskRel[0]][5] + ' ' + maskRel[1] + f' {tokenizer.mask_token} .'
+    templateType=templateType+data['node'][maskRel[0]][4] + ' '+maskRel[1]+ f' {tokenizer.mask_token} .'
     assert len(template.split(' ')) == len(templateType.split(' '))
-    return template, templateType, sorted_relation_only + [maskRel]
+
+    template_pre = ""
+    for k in range(len(data['node'])):
+        template_pre += data['node'][k][6] + ' ,'
+    out_template = template_pre + template
+    return out_template, templateType, sorted_relation_only + [maskRel]
 
 def getSentence(args, tokenizer, data, relation):
     sentence = {}
@@ -94,8 +99,8 @@ def tokenizerHandler(args, template, tokenizer):
         template,
         add_special_tokens=True,
         padding='max_length',
-        max_length=args.len_arg,
-        truncation=True,
+        # max_length=args.len_arg,
+        truncation=False,
         pad_to_max_length=True,
         return_attention_mask=True,
         return_tensors='pt'
@@ -116,7 +121,7 @@ def get_batch(data, args, indices, tokenizer,is_test=False):
     event_tokenizer_pos, event_key_pos = [], []
     for idx in indices:
         candi = [tokenizer.encode(data[idx]['candiSet'][i])[1] for i in range(len(data[idx]['candiSet']))]
-        template, templateType, relation = getTemplate(args, data[idx])
+        template, templateType, relation = getTemplate(args, data[idx],tokenizer)
         sentence = getSentence(args, tokenizer, data[idx], relation)
         
         arg_1_idx, arg_1_mask = tokenizerHandler(args, template, tokenizer)
@@ -127,9 +132,9 @@ def get_batch(data, args, indices, tokenizer,is_test=False):
             label = tokenizer.encode(data[idx]['candiSet'][data[idx]['label']])[1]
 
         # template分词后所有事件的位置
-        ePosition, ePositionKey = getposHandler(data[idx], arg_1_idx, relation, sentence, tokenizer)
-        event_tokenizer_pos.append(ePosition)
-        event_key_pos.append(ePositionKey)
+        # ePosition, ePositionKey = getposHandler(data[idx], arg_1_idx, relation, sentence, tokenizer)
+        # event_tokenizer_pos.append(ePosition)
+        # event_key_pos.append(ePositionKey)
         
         labels.append(label)
         candiSet.append(candi)
@@ -139,13 +144,13 @@ def get_batch(data, args, indices, tokenizer,is_test=False):
             batch_idx = arg_1_idx
             batch_mask = arg_1_mask
             batch_Type_idx, batch_Type_mask = arg_Type_idx, arg_Type_mask
-            mask_indices = torch.nonzero(arg_1_idx == 50264, as_tuple=False)[0][1]
+            mask_indices = torch.nonzero(arg_1_idx == tokenizer.encode(tokenizer.mask_token)[1], as_tuple=False)[0][1]
             mask_indices = torch.unsqueeze(mask_indices, 0)
         else:
             batch_idx = torch.cat((batch_idx, arg_1_idx), dim=0)
             batch_mask = torch.cat((batch_mask, arg_1_mask), dim=0)
             batch_Type_idx, batch_Type_mask = torch.cat((batch_Type_idx, arg_Type_idx), dim=0), torch.cat((batch_Type_mask, arg_Type_mask), dim=0)
-            mask_indices = torch.cat((mask_indices, torch.unsqueeze(torch.nonzero(arg_1_idx == 50264, as_tuple=False)[0][1], 0)), dim=0)
+            mask_indices = torch.cat((mask_indices, torch.unsqueeze(torch.nonzero(arg_1_idx == tokenizer.encode(tokenizer.mask_token)[1], as_tuple=False)[0][1], 0)), dim=0)
     return batch_idx, batch_mask, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_idx, batch_Type_mask
 
 

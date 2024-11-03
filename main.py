@@ -16,11 +16,11 @@ import logging
 import tqdm
 from datetime import datetime
 from load_data import load_data
-from transformers import RobertaTokenizer, AdamW
+from transformers import RobertaTokenizer, AdamW,AutoTokenizer,T5TokenizerFast
 from parameter import parse_args
 from tools import calculate, get_batch, correct_data,collect_mult_event,replace_mult_event
 import random
-from model import MLP
+from model import MLP ,MLP_albert,MLP_T5
 from SeDGPL import SeDGPL
 from SeDGPL import SeDGPL1
 import json
@@ -43,8 +43,12 @@ if not os.path.exists(args.log):
 if not os.path.exists(args.model):
     os.mkdir(args.model)
 t = time.strftime('%Y-%m-%d %H_%M_%S', time.localtime())
-args.log = args.log + 'base__fold-' + str(args.fold) + '__' + t + '.txt'
-args.model = args.model + 'base__fold-' + str(args.fold) + '__' + t + '.pth'
+# args.log = args.log + 'base__fold-' + str(args.fold) + '__' + t + '.txt'
+# args.model = args.model + 'base__fold-' + str(args.fold) + '__' + t + '.pth'
+args.log = args.log + args.model_name +'__' + t + '.txt'
+args.model = args.model + args.model_name + '__' + t + '.pth'
+
+
 # refine
 for name in logging.root.manager.loggerDict:
     if 'transformers' in name:
@@ -75,7 +79,35 @@ printlog('log path: {}'.format(args.log))
 printlog('transformer model: {}'.format(args.model_name))
 
 # tokenizer = RobertaTokenizer.from_pretrained(args.model_name)
-tokenizer = RobertaTokenizer("model/vocab.json", "model/merges.txt")
+# tokenizer = RobertaTokenizer("model/vocab.json", "model/merges.txt")
+
+
+if args.model_name == 'roberta': 
+    tokenizer = AutoTokenizer.from_pretrained('FacebookAI/roberta-base')
+elif args.model_name == 'albert':
+    tokenizer = AutoTokenizer.from_pretrained('albert/albert-base-v2')
+elif args.model_name == 't5':
+    class CustomT5Tokenizer:
+        def __init__(self, pretrained_model_name_or_path):
+            self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
+            self.tokenizer.mask_token = '<extra_id_0>'
+        def encode(self, text, **kwargs):
+            # 在这里添加你自定义的编码逻辑
+            encoded_input = self.tokenizer.encode(text, **kwargs)
+            return [0,*encoded_input]
+        def __getattr__(self, name):
+            return getattr(self.tokenizer, name)
+        def __call__(self, *args, **kwargs):
+            output = self.tokenizer(*args, **kwargs)
+            output['input_ids'] = [0,*output['input_ids']]
+            output['attention_mask'] = [1,*output['attention_mask']]
+            return output
+        def __len__(self):
+            return len(self.tokenizer)
+    tokenizer = CustomT5Tokenizer("google-t5/t5-base")
+else:
+    tokenizer = RobertaTokenizer.from_pretrained('FacebookAI/roberta-base')
+
 
 # -------------------------------- 加载数据 --------------------------------
 printlog('Loading data')
@@ -106,9 +138,16 @@ test_data = replace_mult_event(test_data,reverse_event_dict)
 
 
 # ---------- network ----------
-net = MLP(args).to(device)
-# net = SeDGPL(args).to(device)
-# net = SeDGPL1(args).to(device)
+if args.model_name == 'roberta':
+    net = MLP(args).to(device)
+elif args.model_name == 'albert':
+    net = MLP_albert(args).to(device)
+elif args.model_name == 't5':
+    net = MLP_T5(args).to(device)
+elif args.model_name == 'sedgpl':
+    net = SeDGPL(args).to(device)
+elif args.model_name == 'sedgpl1':
+    net = SeDGPL1(args).to(device)
 net.handler(to_add, tokenizer)
 
 if args.ckpt.strip() != '':
@@ -175,6 +214,7 @@ for epoch in range(args.num_epoch):
         total_step = len(train_data) // args.batch_size + 1
         step = 0
         for ii, batch_indices in enumerate(all_indices, 1):
+            mode = 'SimPrompt Learning'
             progress.update(1)
             # get a batch of wordvecs
             batch_arg, mask_arg, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(train_data, args, batch_indices, tokenizer)
@@ -182,19 +222,27 @@ for epoch in range(args.num_epoch):
             mask_arg = mask_arg.to(device)
             mask_indices = mask_indices.to(device)
             batch_Type_arg, mask_Type_arg = batch_Type_arg.to(device), mask_Type_arg.to(device)
+            candiLabels = [] +labels
+            for tt in range(len(labels)):
+                candiLabels[tt] = candiSet[tt].index(labels[tt])
             for sent in sentences:
                 for k in sent.keys():
                     sent[k]['input_ids'] = sent[k]['input_ids'].to(device)
                     sent[k]['attention_mask'] = sent[k]['attention_mask'].to(device)
             length = len(batch_indices)
             # fed data into network
-            prediction = net(batch_arg, mask_arg, mask_indices, length)
-            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
+            if args.model_name == 't5': 
+                prediction = net(batch_arg, mask_arg, mask_indices, length)
+            if args.model_name == 'sedgpl':
+                prediction, SP_loss = net(mode,batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,candiSet, candiLabels)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
-            # answer_space：[23702,50265]
             label = torch.LongTensor(labels).to(device)
-            # loss
-            loss = cross_entropy(prediction,label)
+
+            if args.model_name == 't5':
+                loss = cross_entropy(prediction,label)
+            elif args.model_name == 'sedgpl':
+                loss = cross_entropy(prediction,label) + args.Sim_ratio * SP_loss
+
             # optimize
             optimizer.zero_grad()
             loss.backward()
@@ -213,7 +261,7 @@ for epoch in range(args.num_epoch):
             all_Hit50 += hit50
             if ii % (100 // args.batch_size) == 0:
                 printlog('loss={:.4f} hit1={:.4f}, hit3={:.4f}, hit10={:.4f}, hit50={:.4f}'.format(
-                    loss_epoch / (30 // args.batch_size),
+                    loss_epoch / (100 // args.batch_size),
                     sum(Hit1) / len(Hit1),
                     sum(Hit3) / len(Hit3),
                     sum(Hit10) / len(Hit10),
@@ -232,6 +280,7 @@ for epoch in range(args.num_epoch):
     ##################################  dev  ###################################
     ############################################################################
     if args.eval:
+        mode = 'Prompt Learning'
         all_indices = torch.randperm(dev_size).split(args.batch_size)
         Hit1_d, Hit3_d, Hit10_d, Hit50_d = [], [], [], []
 
@@ -247,16 +296,22 @@ for epoch in range(args.num_epoch):
             batch_arg = batch_arg.to(device)
             mask_arg = mask_arg.to(device)
             mask_indices = mask_indices.to(device)
+            candiLabels = [] + labels
+            for tt in range(len(labels)):
+                candiLabels[tt] = candiSet[tt].index(labels[tt])
             batch_Type_arg, mask_Type_arg = batch_Type_arg.to(device), mask_Type_arg.to(device)
             for sent in sentences:
                 for k in sent.keys():
                     sent[k]['input_ids'] = sent[k]['input_ids'].to(device)
                     sent[k]['attention_mask'] = sent[k]['attention_mask'].to(device)
             length = len(batch_indices)
-            prediction = net(batch_arg, mask_arg, mask_indices, length)
-            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
+            if args.model_name == 't5': 
+                prediction = net(batch_arg, mask_arg, mask_indices, length)
+            if args.model_name == 'sedgpl':
+                prediction = net(mode,batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,candiSet, candiLabels)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
 
+           
             hit1, hit3, hit10, hit50 = calculate(prediction, candiSet, labels, length)
             Hit1_d += hit1
             Hit3_d += hit3
@@ -268,7 +323,7 @@ for epoch in range(args.num_epoch):
     if args.eval is True and args.train is False and args.test is False:
         printlog("DEV:")
         printlog('loss={:.4f} hit1={:.4f}, hit3={:.4f}, hit10={:.4f}, hit50={:.4f}'.format(
-            loss_epoch / (30 // args.batch_size),
+            loss_epoch / (100 // args.batch_size),
             sum(Hit1_d) / len(Hit1_d),
             sum(Hit3_d) / len(Hit3_d),
             sum(Hit10_d) / len(Hit10_d),
@@ -313,8 +368,8 @@ for epoch in range(args.num_epoch):
                     sent[k]['attention_mask'] = sent[k]['attention_mask'].to(device)
             length = len(batch_indices)
             # fed data into network
-            prediction = net(batch_arg, mask_arg, mask_indices, length)
-            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
+            # prediction = net(batch_arg, mask_arg, mask_indices, length)
+            prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
 
             predictions.append(prediction.cpu().detach().numpy())
@@ -356,7 +411,7 @@ for epoch in range(args.num_epoch):
         printlog('EPOCH : {}'.format(epoch))
         printlog("TRAIN:")
         printlog('loss={:.4f} hit1={:.4f}, hit3={:.4f}, hit10={:.4f}, hit50={:.4f}'.format(
-            loss_epoch / (30 // args.batch_size),
+            loss_epoch / (len(train_data) // args.batch_size),
             sum(all_Hit1) / len(all_Hit1),
             sum(all_Hit3) / len(all_Hit3),
             sum(all_Hit10) / len(all_Hit10),
@@ -366,7 +421,7 @@ for epoch in range(args.num_epoch):
     if args.eval:
         printlog("DEV:")
         printlog('loss={:.4f} hit1={:.4f}, hit3={:.4f}, hit10={:.4f}, hit50={:.4f}'.format(
-            loss_epoch / (30 // args.batch_size),
+            loss_epoch / (len(dev_data) // args.batch_size),
             sum(Hit1_d) / len(Hit1_d),
             sum(Hit3_d) / len(Hit3_d),
             sum(Hit10_d) / len(Hit10_d),
@@ -375,7 +430,7 @@ for epoch in range(args.num_epoch):
     ######### Test Results Print #########
     # printlog("TEST:")
     # printlog('loss={:.4f} hit1={:.4f}, hit3={:.4f}, hit10={:.4f}, hit50={:.4f}'.format(
-    #     loss_epoch / (30 // args.batch_size),
+    #     loss_epoch / (100 // args.batch_size),
     #     sum(Hit1_t) / len(Hit1_t),
     #     sum(Hit3_t) / len(Hit3_t),
     #     sum(Hit10_t) / len(Hit10_t),
