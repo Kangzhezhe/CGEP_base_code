@@ -16,11 +16,11 @@ import logging
 import tqdm
 from datetime import datetime
 from load_data import load_data
-from transformers import RobertaTokenizer, AdamW
+from transformers import RobertaTokenizer, AdamW,AutoTokenizer
 from parameter import parse_args
 from tools import calculate, get_batch, correct_data,collect_mult_event,replace_mult_event
 import random
-from model import MLP
+from model import MLP ,MLP_albert,MLP_T5
 from SeDGPL import SeDGPL
 from SeDGPL import SeDGPL1
 import json
@@ -43,8 +43,12 @@ if not os.path.exists(args.log):
 if not os.path.exists(args.model):
     os.mkdir(args.model)
 t = time.strftime('%Y-%m-%d %H_%M_%S', time.localtime())
-args.log = args.log + 'base__fold-' + str(args.fold) + '__' + t + '.txt'
-args.model = args.model + 'base__fold-' + str(args.fold) + '__' + t + '.pth'
+# args.log = args.log + 'base__fold-' + str(args.fold) + '__' + t + '.txt'
+# args.model = args.model + 'base__fold-' + str(args.fold) + '__' + t + '.pth'
+args.log = args.log + args.model_name +'__' + t + '.txt'
+args.model = args.model + args.model_name + '__' + t + '.pth'
+
+
 # refine
 for name in logging.root.manager.loggerDict:
     if 'transformers' in name:
@@ -75,7 +79,14 @@ printlog('log path: {}'.format(args.log))
 printlog('transformer model: {}'.format(args.model_name))
 
 # tokenizer = RobertaTokenizer.from_pretrained(args.model_name)
-tokenizer = RobertaTokenizer("model/vocab.json", "model/merges.txt")
+# tokenizer = RobertaTokenizer("model/vocab.json", "model/merges.txt")
+
+if args.model_name == 'roberta': 
+    tokenizer = AutoTokenizer.from_pretrained('FacebookAI/roberta-base')
+elif args.model_name == 'albert':
+    tokenizer = AutoTokenizer.from_pretrained('albert/albert-base-v2')
+elif args.model_name == 't5':
+    tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-base")
 
 # -------------------------------- 加载数据 --------------------------------
 printlog('Loading data')
@@ -107,7 +118,12 @@ test_data = replace_mult_event(test_data,reverse_event_dict)
 
 
 # ---------- network ----------
-net = MLP(args).to(device)
+if args.model_name == 'roberta':
+    net = MLP(args).to(device)
+elif args.model_name == 'albert':
+    net = MLP_albert(args).to(device)
+elif args.model_name == 't5':
+    net = MLP_T5(args).to(device)
 # net = SeDGPL(args).to(device)
 # net = SeDGPL1(args).to(device)
 net.handler(to_add, tokenizer)
@@ -227,7 +243,7 @@ for epoch in range(args.num_epoch):
         progress.close()
 
 
-        # torch.save(net.state_dict(), args.model)
+        torch.save(net.state_dict(), args.model)
 
     ############################################################################
     ##################################  dev  ###################################

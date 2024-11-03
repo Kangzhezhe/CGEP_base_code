@@ -18,7 +18,7 @@ from util import getDistance
 #     maskRel = data['edge'][-1]
 #     return template + data['node'][maskRel[0]][5] + ' ' + maskRel[1] + ' <mask> .', relation + [maskRel]
 
-def getTemplate(args, data):
+def getTemplate(args, data,tokenizer):
     edge = data['edge'][:-1] if len(data['edge'])<=(args.len_arg)//10 else data['edge'][0:(args.len_arg)//10]
     # random.shuffle(edge)
     causeRel = edge[0:len(edge)]
@@ -43,8 +43,8 @@ def getTemplate(args, data):
         template = template + rl + ' , '
         templateType = templateType + rlType + ' , '
     maskRel = data['edge'][-1]
-    template = template + data['node'][maskRel[0]][5] + ' ' + maskRel[1] + ' <mask> .'
-    templateType=templateType+data['node'][maskRel[0]][4] + ' '+maskRel[1]+' <mask> .'
+    template = template + data['node'][maskRel[0]][5] + ' ' + maskRel[1] + f' {tokenizer.mask_token} .'
+    templateType=templateType+data['node'][maskRel[0]][4] + ' '+maskRel[1]+ f' {tokenizer.mask_token} .'
     assert len(template.split(' ')) == len(templateType.split(' '))
     return template, templateType, sorted_relation_only + [maskRel]
 
@@ -116,7 +116,7 @@ def get_batch(data, args, indices, tokenizer,is_test=False):
     event_tokenizer_pos, event_key_pos = [], []
     for idx in indices:
         candi = [tokenizer.encode(data[idx]['candiSet'][i])[1] for i in range(len(data[idx]['candiSet']))]
-        template, templateType, relation = getTemplate(args, data[idx])
+        template, templateType, relation = getTemplate(args, data[idx],tokenizer)
         sentence = getSentence(args, tokenizer, data[idx], relation)
         
         arg_1_idx, arg_1_mask = tokenizerHandler(args, template, tokenizer)
@@ -139,13 +139,13 @@ def get_batch(data, args, indices, tokenizer,is_test=False):
             batch_idx = arg_1_idx
             batch_mask = arg_1_mask
             batch_Type_idx, batch_Type_mask = arg_Type_idx, arg_Type_mask
-            mask_indices = torch.nonzero(arg_1_idx == 50264, as_tuple=False)[0][1]
+            mask_indices = torch.nonzero(arg_1_idx == tokenizer.encode(tokenizer.mask_token)[1], as_tuple=False)[0][1]
             mask_indices = torch.unsqueeze(mask_indices, 0)
         else:
             batch_idx = torch.cat((batch_idx, arg_1_idx), dim=0)
             batch_mask = torch.cat((batch_mask, arg_1_mask), dim=0)
             batch_Type_idx, batch_Type_mask = torch.cat((batch_Type_idx, arg_Type_idx), dim=0), torch.cat((batch_Type_mask, arg_Type_mask), dim=0)
-            mask_indices = torch.cat((mask_indices, torch.unsqueeze(torch.nonzero(arg_1_idx == 50264, as_tuple=False)[0][1], 0)), dim=0)
+            mask_indices = torch.cat((mask_indices, torch.unsqueeze(torch.nonzero(arg_1_idx == tokenizer.encode(tokenizer.mask_token)[1], as_tuple=False)[0][1], 0)), dim=0)
     return batch_idx, batch_mask, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_idx, batch_Type_mask
 
 

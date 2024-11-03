@@ -12,7 +12,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--train",
-                "--eval"
+                "--eval",
             ]
         }
     ]
