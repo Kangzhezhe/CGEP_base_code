@@ -107,6 +107,7 @@ class MLP_T5(nn.Module):
         super().__init__()
         assert args.model_name == 't5'
         self.t5_model = AutoModelForSeq2SeqLM.from_pretrained("google-t5/t5-base").to(device)
+        # self.t5_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-base").to(device)
         # self.t5_model = AutoModelForSeq2SeqLM.from_pretrained("facebook/opt-350m").to(device)
         self.t5_model.resize_token_embeddings(args.vocab_size)
         for param in self.t5_model.parameters():

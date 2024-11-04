@@ -95,21 +95,31 @@ elif args.model_name == 't5':
         def __init__(self, pretrained_model_name_or_path):
             self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
             self.tokenizer.mask_token = '<extra_id_0>'
+            self.model_name = pretrained_model_name_or_path
         def encode(self, text, **kwargs):
             # 在这里添加你自定义的编码逻辑
-            encoded_input = self.tokenizer.encode(text, **kwargs)
-            return [0,*encoded_input]
+            if self.model_name == "google-t5/t5-base":
+                encoded_input = self.tokenizer.encode(text, **kwargs)
+                return [0,*encoded_input]
+            elif self.model_name == "google/flan-t5-base":
+                return self.tokenizer.encode(text, **kwargs)
+            
         def __getattr__(self, name):
             return getattr(self.tokenizer, name)
         def __call__(self, *args, **kwargs):
-            output = self.tokenizer(*args, **kwargs)
-            output['input_ids'] = [0,*output['input_ids']]
-            output['attention_mask'] = [1,*output['attention_mask']]
-            return output
+            if self.model_name in ["google/flan-t5-base" , "google-t5/t5-base"]:
+                output = self.tokenizer(*args, **kwargs)
+                output['input_ids'] = [0,*output['input_ids']]
+                output['attention_mask'] = [1,*output['attention_mask']]
+                return output
+            else:
+                output = self.tokenizer(*args, **kwargs)
+                return output
         def __len__(self):
             return len(self.tokenizer)
     tokenizer = CustomT5Tokenizer("google-t5/t5-base")
     # tokenizer = CustomT5Tokenizer("google/flan-t5-small")
+    # tokenizer = CustomT5Tokenizer("google/flan-t5-base")
 else:
     tokenizer = RobertaTokenizer.from_pretrained('FacebookAI/roberta-base')
 
@@ -283,8 +293,9 @@ for epoch in range(args.num_epoch):
 
         progress.close()
         
-        if epoch > 0 and epoch % 20 == 0 or epoch == args.num_epoch - 1:
-            torch.save(net.state_dict(), args.model + '_' + str(epoch) + '.pth')
+        # if epoch > 0 and epoch % 20 == 0 or epoch == args.num_epoch - 1:
+        #     torch.save(net.state_dict(), args.model + '_' + str(epoch) + '.pth')
+        torch.save(net.state_dict(), args.model + '_' + str(epoch) + '.pth')
 
     ############################################################################
     ##################################  dev  ###################################
@@ -366,21 +377,25 @@ for epoch in range(args.num_epoch):
             progress.update(1)
 
             # get a batch of wordvecs
-            batch_arg, mask_arg, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(test_data, args, batch_indices, tokenizer)
+            batch_arg, mask_arg, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(test_data, args, batch_indices, tokenizer,is_test=True)
             batch_arg = batch_arg.to(device)
             mask_arg = mask_arg.to(device)
             mask_indices = mask_indices.to(device)
+            candiLabels = [] + labels
+            for tt in range(len(labels)):
+                candiLabels[tt] = candiSet[tt].index(labels[tt])
             batch_Type_arg, mask_Type_arg = batch_Type_arg.to(device), mask_Type_arg.to(device)
             for sent in sentences:
                 for k in sent.keys():
                     sent[k]['input_ids'] = sent[k]['input_ids'].to(device)
                     sent[k]['attention_mask'] = sent[k]['attention_mask'].to(device)
             length = len(batch_indices)
-            # fed data into network
-            # prediction = net(batch_arg, mask_arg, mask_indices, length)
-            prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos)
+            if args.model_name == 't5': 
+                prediction = net(batch_arg, mask_arg, mask_indices, length)
+            if args.model_name == 'sedgpl':
+                prediction = net(mode,batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,candiSet, candiLabels)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
-
+           
             predictions.append(prediction.cpu().detach().numpy())
             candiSets.append(candiSet)
                 # hit1, hit3, hit10, hit50 = calculate(prediction, candiSet, labels, length)
