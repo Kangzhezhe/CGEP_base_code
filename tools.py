@@ -2,22 +2,6 @@ import torch
 # from numpy import random
 from util import getDistance
 
-
-# def getTemplate(args, data):
-#     edge = data['edge'][:-1] if len(data['edge'])<=(args.len_arg)//10 else data['edge'][0:(args.len_arg)//10]
-#     causeRatio = args.cause_ratio/(args.cause_ratio+args.becausedby_ratio)
-#     causeRel = edge[0:int(len(edge)*causeRatio)]
-#     becausedbyRel = [[rel[-1], 'be casued by', rel[0]] for rel in edge[int(len(edge)*causeRatio):]]
-#     template = ''
-#     relation = [] + causeRel + becausedbyRel
-#     for rel in relation:
-#         eId1 = rel[0]
-#         eId2 = rel[-1]
-#         rl = data['node'][eId1][5] + ' ' + rel[1] + ' ' + data['node'][eId2][5]
-#         template = template + rl + ' , '
-#     maskRel = data['edge'][-1]
-#     return template + data['node'][maskRel[0]][5] + ' ' + maskRel[1] + ' <mask> .', relation + [maskRel]
-
 def getTemplate(args, data,tokenizer):
     edge = data['edge'][:-1] if len(data['edge'])<=(args.len_arg)//10 else data['edge'][0:(args.len_arg)//10]
     # random.shuffle(edge)
@@ -61,7 +45,7 @@ def getSentence(args, tokenizer, data, relation):
         if rel[-1] not in sentence.keys():
             sentence[rel[-1]] = data['node'][rel[-1]][6]
     sentTokenizer = {}
-    for e in sentence.keys():
+    for e in list(sentence.keys())[:-1]:
         sent_dict = tokenizer.encode_plus(
                 sentence[e],
                 add_special_tokens=True,
@@ -73,8 +57,6 @@ def getSentence(args, tokenizer, data, relation):
                 return_tensors='pt'
             )
         event = data['node'][e][5]
-        if event == ']':
-            continue
         sentTokenizer[str(e)+'_'+str(tokenizer.encode(event)[1])] = {'input_ids':      sent_dict['input_ids'],
                                                                      'attention_mask': sent_dict['attention_mask'],
                                                                      'position':       torch.where(sent_dict['input_ids']==tokenizer.encode(event)[1])[1].item()}

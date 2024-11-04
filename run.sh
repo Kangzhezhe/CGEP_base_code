@@ -1,0 +1,1 @@
+python main.py --train --eval --model-name t5

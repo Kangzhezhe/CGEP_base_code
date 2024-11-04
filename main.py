@@ -27,6 +27,10 @@ import json
 
 torch.manual_seed(42)
 
+import torch
+import torch.nn.functional as F
+from focal_loss import FocalLoss
+
 #%%
 
 args = parse_args()  # load parameters
@@ -46,7 +50,7 @@ t = time.strftime('%Y-%m-%d %H_%M_%S', time.localtime())
 # args.log = args.log + 'base__fold-' + str(args.fold) + '__' + t + '.txt'
 # args.model = args.model + 'base__fold-' + str(args.fold) + '__' + t + '.pth'
 args.log = args.log + args.model_name +'__' + t + '.txt'
-args.model = args.model + args.model_name + '__' + t + '.pth'
+args.model = args.model + args.model_name
 
 
 # refine
@@ -105,6 +109,7 @@ elif args.model_name == 't5':
         def __len__(self):
             return len(self.tokenizer)
     tokenizer = CustomT5Tokenizer("google-t5/t5-base")
+    # tokenizer = CustomT5Tokenizer("google/flan-t5-small")
 else:
     tokenizer = RobertaTokenizer.from_pretrained('FacebookAI/roberta-base')
 
@@ -153,7 +158,7 @@ net.handler(to_add, tokenizer)
 
 if args.ckpt.strip() != '':
     printlog('Loading model from {}'.format(args.ckpt))
-    net.load_state_dict(torch.load(args.ckpt))
+    net.load_state_dict(torch.load(args.ckpt, map_location=torch.device('cpu')))
     printlog('Model loaded')
 
 no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
@@ -163,7 +168,8 @@ optimizer_grouped_parameters = [
 ]
 optimizer = AdamW(params=optimizer_grouped_parameters, lr=args.t_lr)
 # 采用交叉熵损失
-cross_entropy = nn.CrossEntropyLoss().to(device)
+# criterion = nn.CrossEntropyLoss().to(device)
+criterion = FocalLoss(alpha=0.25, gamma=2).to(device)
 
 # 记录验证集最好时，测试集的效果，以及相应的epoch
 best_hit1, best_hit3, best_hit10, best_hit50 = 0,0,0,0
@@ -184,7 +190,6 @@ printlog('Start training ...')
 
 
 # 所有数据的候选集
-#%%
 
 ##################################  epoch  #################################
 for epoch in range(args.num_epoch):
@@ -208,14 +213,15 @@ for epoch in range(args.num_epoch):
     ##################################  train  #################################
     ############################################################################
     if args.train:
-    
         net.train()
+        
         progress = tqdm.tqdm(total=len(train_data) // args.batch_size + 1, ncols=75,
                                 desc='Train {}'.format(epoch))
         total_step = len(train_data) // args.batch_size + 1
         step = 0
         for ii, batch_indices in enumerate(all_indices, 1):
-            mode = 'SimPrompt Learning'
+            # mode = 'SimPrompt Learning'
+            mode = 'Prompt Learning'
             progress.update(1)
             # get a batch of wordvecs
             batch_arg, mask_arg, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(train_data, args, batch_indices, tokenizer)
@@ -234,15 +240,17 @@ for epoch in range(args.num_epoch):
             # fed data into network
             if args.model_name == 't5': 
                 prediction = net(batch_arg, mask_arg, mask_indices, length)
+                # prediction, SP_loss = net(batch_arg, mask_arg, mask_indices, length,candiSet, candiLabels, mode)
             if args.model_name == 'sedgpl':
                 prediction, SP_loss = net(mode,batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,candiSet, candiLabels)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
             label = torch.LongTensor(labels).to(device)
 
             if args.model_name == 't5':
-                loss = cross_entropy(prediction,label)
+                # loss = criterion(prediction,label)+ args.Sim_ratio * SP_loss
+                loss = criterion(prediction,label)
             elif args.model_name == 'sedgpl':
-                loss = cross_entropy(prediction,label) + args.Sim_ratio * SP_loss
+                loss = criterion(prediction,label) + args.Sim_ratio * SP_loss
 
             # optimize
             optimizer.zero_grad()
@@ -273,9 +281,9 @@ for epoch in range(args.num_epoch):
         print('Training Time: {:.2f}s'.format(end - start))
 
         progress.close()
-
-
-        # torch.save(net.state_dict(), args.model)
+        
+        if epoch > 0 and epoch % 20 == 0 or epoch == args.num_epoch - 1:
+            torch.save(net.state_dict(), args.model + '_' + str(epoch) + '.pth')
 
     ############################################################################
     ##################################  dev  ###################################
@@ -311,7 +319,6 @@ for epoch in range(args.num_epoch):
             if args.model_name == 'sedgpl':
                 prediction = net(mode,batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,candiSet, candiLabels)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
-
            
             hit1, hit3, hit10, hit50 = calculate(prediction, candiSet, labels, length)
             Hit1_d += hit1
@@ -468,8 +475,6 @@ for epoch in range(args.num_epoch):
     # printlog('Eval hit3: {}'.format(best_hit3))
     # printlog('Eval hit10: {}'.format(best_hit10))
     # printlog('Eval hit50: {}'.format(best_hit50))
-
-
 
 
 # torch.save(state, args.model)

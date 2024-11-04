@@ -72,7 +72,7 @@ class SeDGPL(nn.Module):
         if mode == 'Prompt Learning':
             prediction = self.roberta_model.lm_head(anchor_maks)
             return prediction
-        if mode == 'SimPrompt Learning':
+        elif mode == 'SimPrompt Learning':
             prediction = self.roberta_model.lm_head(anchor_maks)
             candi_e_emb = self.roberta_model.roberta.embeddings.word_embeddings(torch.tensor(candiSet[0]).to(device)).to(device)
             pos_emb = candi_e_emb[candiLabels, :]
