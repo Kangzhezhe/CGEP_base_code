@@ -12,7 +12,7 @@ def parse_args():
 
     # Dataset
     parser.add_argument('--fold', default=1, type=int, help='Fold number used to be test set')
-    parser.add_argument('--len_arg', default=150, type=int, help='Sentence length')
+    parser.add_argument('--len_arg', default=300, type=int, help='Sentence length')
     parser.add_argument('--len_temp', default=0, type=int, help='Template length')
     parser.add_argument('--cause_ratio', default=1, type=int, help='cause ratio')
     parser.add_argument('--becausedby_ratio', default=1, type=int, help='be caused by ratio')
