@@ -96,6 +96,7 @@ class SeDGPL(nn.Module):
     # 多token事件特殊标识符采用平均初始化
     def handler(self, to_add, tokenizer):
         da = self.roberta_model.roberta.embeddings.word_embeddings.weight
+        db = self.robert_text.roberta.embeddings.word_embeddings.weight
         for i in to_add.keys():
             l = to_add[i]
             with torch.no_grad():
@@ -105,6 +106,8 @@ class SeDGPL(nn.Module):
                 temp /= len(l)
 
                 da[tokenizer.convert_tokens_to_ids(i)] = temp
+                db[tokenizer.convert_tokens_to_ids(i)] = temp
+
 
 
 
