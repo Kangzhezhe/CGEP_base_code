@@ -98,10 +98,10 @@ elif args.model_name == 't5':
             self.model_name = pretrained_model_name_or_path
         def encode(self, text, **kwargs):
             # 在这里添加你自定义的编码逻辑
-            if self.model_name == "google-t5/t5-base":
+            if self.model_name in ["google-t5/t5-base","google/flan-t5-base"]:
                 encoded_input = self.tokenizer.encode(text, **kwargs)
                 return [0,*encoded_input]
-            elif self.model_name == "google/flan-t5-base":
+            else:
                 return self.tokenizer.encode(text, **kwargs)
             
         def __getattr__(self, name):
@@ -144,6 +144,7 @@ test_data=correct_data(test_data)
 multi_event,special_multi_event_token,event_dict,reverse_event_dict,to_add=collect_mult_event(train_data+dev_data+test_data,tokenizer)
 # 将特殊标识符添加到分词器中
 tokenizer.add_tokens(special_multi_event_token) #516
+tokenizer.add_tokens('<SEP>')
 args.vocab_size = len(tokenizer)                #50265+7+516
 # 将句子中的事件用特殊token <a_i> 替换掉，即：He has went to the school.--->He <a_3> the school.
 train_data = replace_mult_event(train_data,reverse_event_dict)
@@ -248,7 +249,7 @@ for epoch in range(args.num_epoch):
             length = len(batch_indices)
             # fed data into network
             if args.model_name == 't5': 
-                prediction = net(batch_arg, mask_arg, mask_indices, length)
+                prediction = net(batch_arg, mask_arg, mask_indices, length,candiSet, candiLabels)
                 mode = 'Prompt Learning'
                 # prediction, SP_loss = net(batch_arg, mask_arg, mask_indices, length,candiSet, candiLabels, mode)
             if args.model_name == 'sedgpl':

@@ -124,7 +124,15 @@ class MLP_T5(nn.Module):
         # batch_arg = torch.unsqueeze(batch_arg[0,:mask_indices+1],0)
         # arg_mask = torch.unsqueeze(arg_mask[0,:mask_indices+1],0)
         # 使用 input_ids 和 decoder_input_ids
-        outputs = self.t5_model(input_ids=batch_arg,  decoder_input_ids=batch_arg, attention_mask=arg_mask)
+        sep_ids = self.vocab_size - 1
+        sep_index = torch.where(batch_arg[0] == sep_ids)
+        premise = batch_arg[0,:sep_index[0]].unsqueeze(0).to(device)
+        hypothesis = batch_arg[0,sep_index[0]+1:].unsqueeze(0).to(device)
+        mask_indices = (mask_indices[0] - sep_index[0] -1).to(device)
+        
+        # outputs = self.t5_model(input_ids=batch_arg, decoder_input_ids=batch_arg, attention_mask=arg_mask)
+        outputs = self.t5_model(input_ids=premise, decoder_input_ids=hypothesis)
+
         # outputs = self.t5_model(input_ids=batch_arg,  decoder_input_ids=batch_arg, attention_mask=arg_mask, output_hidden_states=True)
         logits = outputs.logits.to(device)
 

@@ -35,7 +35,7 @@ def getTemplate(args, data,tokenizer):
     if args.model_name in ['t5']:
         for k in range(len(data['node'])):
             template_pre += data['node'][k][6] + ' ,'
-    out_template = template_pre + template
+    out_template = template_pre + '<SEP>' +template
     return out_template, templateType, sorted_relation_only + [maskRel]
 
 def getSentence(args, tokenizer, data, relation):
@@ -82,10 +82,10 @@ def tokenizerHandler(args, template, tokenizer):
         encode_dict = tokenizer.encode_plus(
             template,
             add_special_tokens=True,
-            padding='max_length',
+            # padding='max_length',
             # max_length=args.len_arg,
             truncation=False,
-            pad_to_max_length=True,
+            pad_to_max_length=False,
             return_attention_mask=True,
             return_tensors='pt'
         )
@@ -125,6 +125,7 @@ def get_batch(data, args, indices, tokenizer,is_test=False):
             label = 0
         else:
             label = tokenizer.encode(data[idx]['candiSet'][data[idx]['label']])[1]
+        assert tokenizer.encode('<SEP>')[1] in arg_1_idx
 
         # template分词后所有事件的位置
         if args.model_name in ['sedgpl','sedgpl1']:

@@ -3,7 +3,7 @@ out/
 output/
 model/*
 ckpts/*
-.idea
-__pycache__
+.idea/
+__pycache__/
 .history
 ckpts1/*
