@@ -19,8 +19,8 @@ def parse_args():
 
     # Model
     # parser.add_argument('--model-name', default='/home/gp3_zhanch/pkg/RoBERTa/RoBERTaForMaskedLM/roberta-base', type=str, help='Model used to be encoder')
-    parser.add_argument('--model-name', default='t5',
-                        choices=['roberta', 'albert','t5'], 
+    parser.add_argument('--model-name', default='sedgpl',
+                        choices=['roberta', 'albert','t5','sedgpl','sedgpl1'], 
                          type=str, help='Model used to be encoder')
     # parser.add_argument('--model-name', default='/home/bbx/NLP/PLM/RoBERTaForMaskedLM/roberta-base', type=str,help='Model used to be encoder')
     # parser.add_argument('--model-name', default='E:/Desktop/yan1/PLM/RoBERTaForMaskedLM/roberta-base', type=str, help='Model used to be encoder')

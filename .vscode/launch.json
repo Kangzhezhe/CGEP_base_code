@@ -10,6 +10,9 @@
             "request": "launch",
             "program": "${cwd}/main.py",
             "console": "integratedTerminal",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2"
+            },
             "args": [
                 "--train",
                 "--eval",

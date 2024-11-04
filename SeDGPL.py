@@ -50,7 +50,7 @@ class SeDGPL(nn.Module):
                 instance_emb = (word_emb[i][event_tokenizer_pos[i][j]]).clone().unsqueeze(0)
                 sent_emb = (sentences[i][event_key_pos[i][j]]['emb']).clone().unsqueeze(0)
                 gate_1 = torch.sigmoid(self.W1_1(instance_emb) + self.W1_2(sent_emb)).to(device)
-                out_gate_1 = (torch.mul(gate_1, instance_emb) + torch.mul(1.0 - gate_1, sent_emb)).to(device)
+                out_gate_1 = (torch.mul(gate_1, instance_emb) + torch.mul(1.0 - gate_1, sent_emb)).to(device).squeeze(0)
 
                 # gate_2 = torch.sigmoid(self.W2_1(out_gate_1) + self.W2_2(type_emb)).to(device)
                 # out_gate_2 = (torch.mul(gate_2, out_gate_1) + torch.mul(1.0 - gate_2, type_emb)).to(device).squeeze(0)

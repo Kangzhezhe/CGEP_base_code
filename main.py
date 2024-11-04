@@ -220,8 +220,7 @@ for epoch in range(args.num_epoch):
         total_step = len(train_data) // args.batch_size + 1
         step = 0
         for ii, batch_indices in enumerate(all_indices, 1):
-            # mode = 'SimPrompt Learning'
-            mode = 'Prompt Learning'
+            
             progress.update(1)
             # get a batch of wordvecs
             batch_arg, mask_arg, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(train_data, args, batch_indices, tokenizer)
@@ -240,8 +239,10 @@ for epoch in range(args.num_epoch):
             # fed data into network
             if args.model_name == 't5': 
                 prediction = net(batch_arg, mask_arg, mask_indices, length)
+                mode = 'Prompt Learning'
                 # prediction, SP_loss = net(batch_arg, mask_arg, mask_indices, length,candiSet, candiLabels, mode)
             if args.model_name == 'sedgpl':
+                mode = 'SimPrompt Learning'
                 prediction, SP_loss = net(mode,batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,candiSet, candiLabels)
             # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
             label = torch.LongTensor(labels).to(device)
