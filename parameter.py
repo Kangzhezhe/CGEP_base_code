@@ -29,9 +29,10 @@ def parse_args():
     parser.add_argument('--Sim_ratio', default=0.5, type=float, help='Ratio of similarity in loss function')
 
     # Prompt and Contrastive Training
-    parser.add_argument('--num_epoch', default=100, type=int, help='Number of total epochs to run prompt learning')
+    parser.add_argument('--num_epoch', default=2, type=int, help='Number of total epochs to run prompt learning')
     parser.add_argument('--batch_size', default=1, type=int, help='Batch size for prompt learning')
     parser.add_argument('--t_lr', default=5e-6, type=float, help='Initial lr')
+    parser.add_argument('--warmup_ratio', default=0.1, type=float, help='Set Warmup Ratio')
     parser.add_argument('--wd', default=1e-2, type=float, help='weight decay')
 
     # Others
@@ -44,7 +45,6 @@ def parse_args():
     parser.add_argument('--test',  action='store_true', help='Train or eval')
 
     parser.add_argument('--ckpt', default='', type=str, help='Checkpoint file name')
-
     # args = parser.parse_args(args=[])
     args = parser.parse_args()
     return args

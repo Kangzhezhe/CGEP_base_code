@@ -17,7 +17,6 @@ def getTemplate(args, data,tokenizer):
     sorted_characters = sorted(weighted_characters, reverse=True)
     sorted_relation_only = [char for weight, char in sorted_characters]
 
-
     # random.shuffle(relation)
     for rel in sorted_relation_only:
         eId1 = rel[0]
@@ -35,7 +34,7 @@ def getTemplate(args, data,tokenizer):
     if args.model_name in ['t5']:
         for k in range(len(data['node'])):
             template_pre += data['node'][k][6] + ' ,'
-    out_template = template_pre + '<SEP>' +template
+    out_template = template_pre + '<SEP>' + template
     return out_template, templateType, sorted_relation_only + [maskRel]
 
 def getSentence(args, tokenizer, data, relation):

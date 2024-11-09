@@ -16,7 +16,9 @@ import logging
 import tqdm
 from datetime import datetime
 from load_data import load_data
-from transformers import RobertaTokenizer, AdamW,AutoTokenizer,T5TokenizerFast
+from transformers import RobertaTokenizer,AutoTokenizer,T5TokenizerFast
+from torch.optim.lr_scheduler import MultiStepLR
+from transformers import AdamW, get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
 from parameter import parse_args
 from tools import calculate, get_batch, correct_data,collect_mult_event,replace_mult_event
 import random
@@ -98,7 +100,7 @@ elif args.model_name == 't5':
             self.model_name = pretrained_model_name_or_path
         def encode(self, text, **kwargs):
             # 在这里添加你自定义的编码逻辑
-            if self.model_name in ["google-t5/t5-base","google/flan-t5-base"]:
+            if self.model_name in ["google-t5/t5-base","google/flan-t5-base","google-t5/t5-large"]:
                 encoded_input = self.tokenizer.encode(text, **kwargs)
                 return [0,*encoded_input]
             else:
@@ -107,7 +109,7 @@ elif args.model_name == 't5':
         def __getattr__(self, name):
             return getattr(self.tokenizer, name)
         def __call__(self, *args, **kwargs):
-            if self.model_name in ["google/flan-t5-base" , "google-t5/t5-base"]:
+            if self.model_name in ["google/flan-t5-base" , "google-t5/t5-base","google-t5/t5-large"]:
                 output = self.tokenizer(*args, **kwargs)
                 output['input_ids'] = [0,*output['input_ids']]
                 output['attention_mask'] = [1,*output['attention_mask']]
@@ -117,8 +119,8 @@ elif args.model_name == 't5':
                 return output
         def __len__(self):
             return len(self.tokenizer)
-    tokenizer = CustomT5Tokenizer("google-t5/t5-base")
-    # tokenizer = CustomT5Tokenizer("google/flan-t5-small")
+    # tokenizer = CustomT5Tokenizer("google-t5/t5-base")
+    tokenizer = CustomT5Tokenizer("google-t5/t5-large")
     # tokenizer = CustomT5Tokenizer("google/flan-t5-base")
 else:
     tokenizer = RobertaTokenizer.from_pretrained('FacebookAI/roberta-base')
@@ -151,9 +153,6 @@ train_data = replace_mult_event(train_data,reverse_event_dict)
 dev_data = replace_mult_event(dev_data,reverse_event_dict)
 test_data = replace_mult_event(test_data,reverse_event_dict)
 
-
-
-
 # ---------- network ----------
 if args.model_name == 'roberta':
     net = MLP(args).to(device)
@@ -178,6 +177,11 @@ optimizer_grouped_parameters = [
     {'params': [p for n, p in net.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
 ]
 optimizer = AdamW(params=optimizer_grouped_parameters, lr=args.t_lr)
+tot_steps = args.num_epoch * len(train_data) // args.batch_size
+scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=int(tot_steps * args.warmup_ratio), num_training_steps=tot_steps)
+# warmup_scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=1, eta_min=0)
+milestones = [5, 10, 15]  # 在这些 epoch 降低学习率
+milestone_scheduler = MultiStepLR(optimizer, milestones=milestones, gamma=0.1)
 # 采用交叉熵损失
 # criterion = nn.CrossEntropyLoss().to(device)
 criterion = FocalLoss(alpha=0.25, gamma=2).to(device)
@@ -231,10 +235,9 @@ for epoch in range(args.num_epoch):
         total_step = len(train_data) // args.batch_size + 1
         step = 0
         for ii, batch_indices in enumerate(all_indices, 1):
-            
             progress.update(1)
             # get a batch of wordvecs
-            batch_arg, mask_arg, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(train_data, args, batch_indices, tokenizer)
+            batch_arg, mask_arg, mask_indices, labels, candiSet, sentences, event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(train_data, args, batch_indices, tokenizer)
             batch_arg = batch_arg.to(device)
             mask_arg = mask_arg.to(device)
             mask_indices = mask_indices.to(device)
@@ -249,8 +252,8 @@ for epoch in range(args.num_epoch):
             length = len(batch_indices)
             # fed data into network
             if args.model_name == 't5': 
-                prediction = net(batch_arg, mask_arg, mask_indices, length,candiSet, candiLabels)
                 mode = 'Prompt Learning'
+                prediction = net(batch_arg, mask_arg, mask_indices, length, candiSet, candiLabels)
                 # prediction, SP_loss = net(batch_arg, mask_arg, mask_indices, length,candiSet, candiLabels, mode)
             if args.model_name == 'sedgpl':
                 mode = 'SimPrompt Learning'
@@ -268,6 +271,8 @@ for epoch in range(args.num_epoch):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            scheduler.step()
+            milestone_scheduler.step(epoch)
             step += 1
             loss_epoch += loss.item()
             hit1, hit3, hit10, hit50 = calculate(prediction, candiSet, labels, length)
@@ -314,7 +319,7 @@ for epoch in range(args.num_epoch):
             progress.update(1)
 
             # get a batch of wordvecs
-            batch_arg, mask_arg, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(dev_data, args, batch_indices, tokenizer)
+            batch_arg, mask_arg, mask_indices, labels, candiSet, sentences, event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(dev_data, args, batch_indices, tokenizer)
             batch_arg = batch_arg.to(device)
             mask_arg = mask_arg.to(device)
             mask_indices = mask_indices.to(device)
