@@ -100,7 +100,7 @@ elif args.model_name == 't5':
             self.model_name = pretrained_model_name_or_path
         def encode(self, text, **kwargs):
             # 在这里添加你自定义的编码逻辑
-            if self.model_name in ["google-t5/t5-base","google/flan-t5-base","google-t5/t5-large"]:
+            if self.model_name in ["google-t5/t5-base","google-t5/t5-large"]:
                 encoded_input = self.tokenizer.encode(text, **kwargs)
                 return [0,*encoded_input]
             else:
@@ -109,7 +109,7 @@ elif args.model_name == 't5':
         def __getattr__(self, name):
             return getattr(self.tokenizer, name)
         def __call__(self, *args, **kwargs):
-            if self.model_name in ["google/flan-t5-base" , "google-t5/t5-base","google-t5/t5-large"]:
+            if self.model_name in [ "google-t5/t5-base","google-t5/t5-large"]:
                 output = self.tokenizer(*args, **kwargs)
                 output['input_ids'] = [0,*output['input_ids']]
                 output['attention_mask'] = [1,*output['attention_mask']]
@@ -121,7 +121,6 @@ elif args.model_name == 't5':
             return len(self.tokenizer)
     # tokenizer = CustomT5Tokenizer("google-t5/t5-base")
     tokenizer = CustomT5Tokenizer("google-t5/t5-large")
-    # tokenizer = CustomT5Tokenizer("google/flan-t5-base")
 else:
     tokenizer = RobertaTokenizer.from_pretrained('FacebookAI/roberta-base')
 
@@ -148,6 +147,7 @@ multi_event,special_multi_event_token,event_dict,reverse_event_dict,to_add=colle
 tokenizer.add_tokens(special_multi_event_token) #516
 tokenizer.add_tokens('<SEP>')
 args.vocab_size = len(tokenizer)                #50265+7+516
+
 # 将句子中的事件用特殊token <a_i> 替换掉，即：He has went to the school.--->He <a_3> the school.
 train_data = replace_mult_event(train_data,reverse_event_dict)
 dev_data = replace_mult_event(dev_data,reverse_event_dict)
@@ -182,7 +182,7 @@ scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=int(tot_
 # warmup_scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=1, eta_min=0)
 milestones = [5, 10, 15]  # 在这些 epoch 降低学习率
 milestone_scheduler = MultiStepLR(optimizer, milestones=milestones, gamma=0.1)
-# 采用交叉熵损失
+
 # criterion = nn.CrossEntropyLoss().to(device)
 criterion = FocalLoss(alpha=0.25, gamma=2).to(device)
 
@@ -383,13 +383,13 @@ for epoch in range(args.num_epoch):
             progress.update(1)
 
             # get a batch of wordvecs
-            batch_arg, mask_arg, mask_indices, labels, candiSet, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(test_data, args, batch_indices, tokenizer,is_test=True)
+            batch_arg, mask_arg, mask_indices, labels, candiSet, sentences, event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg = get_batch(test_data, args, batch_indices, tokenizer,is_test=True)
             batch_arg = batch_arg.to(device)
             mask_arg = mask_arg.to(device)
             mask_indices = mask_indices.to(device)
             candiLabels = [] + labels
-            for tt in range(len(labels)):
-                candiLabels[tt] = candiSet[tt].index(labels[tt])
+            # for tt in range(len(labels)):
+            #     candiLabels[tt] = candiSet[tt].index(labels[tt])
             batch_Type_arg, mask_Type_arg = batch_Type_arg.to(device), mask_Type_arg.to(device)
             for sent in sentences:
                 for k in sent.keys():
@@ -400,7 +400,6 @@ for epoch in range(args.num_epoch):
                 prediction = net(batch_arg, mask_arg, mask_indices, length)
             if args.model_name == 'sedgpl':
                 prediction = net(mode,batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,candiSet, candiLabels)
-            # prediction = net(batch_arg, mask_arg, mask_indices, length, sentences,event_tokenizer_pos, event_key_pos,batch_Type_arg, mask_Type_arg)
            
             predictions.append(prediction.cpu().detach().numpy())
             candiSets.append(candiSet)

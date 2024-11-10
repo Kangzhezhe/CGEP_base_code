@@ -1,1 +1,1 @@
-python main.py --train --eval --model-name t5
+python main.py --train --eval --model-name t5 --t_lr 5e-5 --num_epoch 3
