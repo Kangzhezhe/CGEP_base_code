@@ -4,6 +4,7 @@ output/
 model/*
 ckpts/*
 .idea/
-__pycache__/
+__pycache__/*
 .history
 ckpts1/*
+.history/
